@@ -90,9 +90,11 @@ The gyms statistics server is in a separate file, because it's intended to be sh
 
 [![gyms](https://i.imgur.com/MWpHAEWm.jpg)](pokeminer/static/demo/gyms.png)
 
+## Getting Started Tips & FAQs
+
 **PokeMiner Upgrading**
 
-This will get you on the most recent `develop` build, from your pokeminer directory:
+The `develop` branch changes almost daily.  To you ensure you are on the most recent `develop` build, from your pokeminer directory:
 ```
 git checkout develop
 git pull
