@@ -90,7 +90,9 @@ The gyms statistics server is in a separate file, because it's intended to be sh
 
 [![gyms](https://i.imgur.com/MWpHAEWm.jpg)](pokeminer/static/demo/gyms.png)
 
-## [Wiki](https://github.com/Noctem/pokeminer/wiki)
+## Getting Started Tips & FAQs
+
+Visit our [Wiki](https://github.com/Noctem/pokeminer/wiki) for more info.
 
 ## License
 
