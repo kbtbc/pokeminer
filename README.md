@@ -90,6 +90,136 @@ The gyms statistics server is in a separate file, because it's intended to be sh
 
 [![gyms](https://i.imgur.com/MWpHAEWm.jpg)](pokeminer/static/demo/gyms.png)
 
+**PokeMiner Upgrading**
+
+This will get you on the most recent `develop` build, from your pokeminer directory:
+```
+git checkout develop
+git pull
+pip3 install -U -r requirements.txt
+```
+
+**Q. How can I install the optional python dependencies on Windows (not available through pip3)?**
+
+See http://www.lfd.uci.edu/~gohlke/pythonlibs/ for most of the files.  Use `pip3 install [filename]` . Uvloop is not supported on Windows.
+
+**Q. What map polygon tools can I use to create my boundaries?** 
+
+Here are a couple that will work:
+* http://geojson.io/  (note long/lat is reversed in the json) -- good for saving and later editing
+* https://www.keene.edu/campus/maps/tool/
+
+**Q: What is the format to use for my accounts in config.py if they all have same passwords/provider?**
+
+`ACCOUNTS = [['x'], ['y']]`
+
+**Q. What do the dots represent in the status display?**
+
+Dots meaning:
+```        
+        . = visited more than a minute ago
+        , = visited less than a minute ago, no pokemon seen
+        0 = visited less than a minute ago, no pokemon or forts seen
+        : = visited less than a minute ago, pokemon seen
+        ! = currently visiting
+        | = cleaning bag
+        $ = spinning a PokéStop
+        * = sending a notification
+        ~ = encountering a Pokémon
+        I = initial, haven't done anything yet
+        ^ = waiting to log in (limited by SIMULTANEOUS_LOGINS)
+        ∞ = bootstrapping
+        L = logging in
+        A = simulating app startup
+        T = completing the tutorial
+        X = something bad happened
+        H = waiting for the next period on the hashing server
+        C = CAPTCHA
+```
+Other letters: various errors and procedures
+
+**Q. How long will it take to find 100% TTH?**
+
+Depends mostly on the number of workers for the spawnpoint density you have (varies widely).  It will be however long it takes for a worker to go to the same point often enough to get the last 90s of the spawn.  The last 90s is the only time when a valid TTH is sent by Niantic to the client.
+
+**Q. Can I use multiple hash keys?**
+
+You can add multiple hash key support by changing HASH_KEY to a tuple of keys and changing this line in worker.py:
+
+from: `self.api.activate_hash_server(config.HASH_KEY)`
+to: `self.api.activate_hash_server(choice(config.HASH_KEY))`
+
+Note: pgoapi's mechanism for keeping track of maximum and remaining hashes only applies to the most recently used key, so you'll have a little weirdness with those stats jumping between keys.
+
+**Q. Can I run multiple instances of Pokeminer?**
+
+Yes, for now the easiest thing is to copy the contents (except pickle files) to a separate directory.  In Windows, you will also need to define a unique `MANAGER_ADDRESS` in config.py for each instance.
+
+**Q. What are the differences between known/unknown count in console display vs. map display?**
+
+The console display is based on pickle data stored inside the cell ids.  The web.py map uses the database.   Known are spawn points that it knows the cycle for, unknown/mysteries are spawn points that it doesn't know the cycle for. GetMapObjects returns a list of spawn points for S2 cells. Pokeminer uses those so that it has places to go when it hasn't seen enough pokemon to have many points.  
+
+**Q. What does the `--no-pickle` flag do?**
+
+This mode tells Pokeminer to skip loading cell points from the pickle files (and use the database instead).  If you disable MORE_POINTS, it is a good idea to use `--no-pickle`.  It is also a good idea to use `--no-pickle` if you change or constrict your scan area since there will likely be mystery points from the old area in spawns.pickle.      Cell (MORE) points don't show up on the map (they are loaded from the database).
+
+**Q. What does the `--bootstrap` flag do?**
+
+This mode spreads out the workers evenly over your grid and repeats visits to those initial points if something goes wrong. It does that automatically if no spawn points are known (like on the first run).
+
+**Q. What is the difference between GIVE_UP & SKIP_SPAWN?**
+
+SKIP is whether it tries to find a worker or not.
+
+GIVE_UP is how long it tries to find a worker.
+
+Consider these settings:
+```
+GIVE_UP_KNOWN = 75   # try to find a worker for a known spawn for this many seconds before giving up
+GIVE_UP_UNKNOWN = 60 # try to find a worker for an unknown point for this many seconds before giving up
+SKIP_SPAWN = 90      # don't even try to find a worker for a spawn if the spawn time was more than this many seconds ago
+```
+If a pokemon spawned 90s ago and no worker was able to go there in that 90s it will skip.  It skips that point if it spawned more than 90 seconds ago.
+
+So with SKIP_TIME at 90, it's iterating through the spawn points and it sees that the spawn point spawned 91 seconds ago, it skips it without even trying to find a worker. The next one spawned 89 seconds ago so it starts trying to find a worker, if there aren't any workers that can get to it under the speed limit it waits a couple seconds and tries again until GIVE_UP seconds have passed since the time it started trying.
+
+If you have many more spawn points than you can keep up with, you can either be visiting them 10 minutes after they spawn and have 20 minutes of warning, or you can be visiting them 90 seconds after and have 28.5 minutes of warning.
+If you can keep up with your spawn points you'll probably have workers ready before 90 seconds have passed.
+
+
+**Q: How can I use notification filters to send *everything* to the webhooks?**
+
+The easiest way:
+```
+NOTIFY_IDS = None
+NOTIFY_RANKING = None
+ALWAYS_NOTIFY_IDS = tuple(range(1, 152))
+```
+But, it would be faster and smarter (and use less hashing) to enable some filtering in Pokeminer so that it can skip sending stuff to the webhook that will be ignored anyways.  One option would be putting everything in NOTIFY_IDS and overriding their rarity scores.
+
+For example:
+```
+NOTIFY_IDS = (149, 143, 19, 16)
+RARITY_OVERRIDE = {149: 1, 143: .7, 19: 0.2, 16:0.2}
+INITIAL_SCORE = 0.6
+MINIMUM_SCORE = 0.6
+```
+Here they all need to have a total score of at least 0.6. Dragonite has a rarity score of 1, so it only needs a .2 to hit the threshold. Pidgey has a rarity score of 0.2 so it would need perfect IVs to hit it.
+
+Note:  if the rarity scores weren't overridden in that example, they would be generated based on the order listed, so 1, .66, .33, 0.
+
+This should also accomplish similar:
+```
+ALWAYS_NOTIFY_IDS = (3, 6, 9, 143, 149)
+INITIAL_SCORE = 0.9
+MINIMUM_SCORE = 0.9
+NOTIFY_IDS = tuple(range(1, 152))
+IGNORE_RARITY = True
+```
+
+
+
+
 ## License
 
 See [LICENSE](LICENSE).
