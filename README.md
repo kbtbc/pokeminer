@@ -101,7 +101,7 @@ git pull
 pip3 install -U -r requirements.txt
 ```
 
-**Q. How can I install the optional python dependencies on Windows (not available through pip3)?**
+**Q. I get an error on Windows with many of the optional requirements.  How can I install them?**
 
 See http://www.lfd.uci.edu/~gohlke/pythonlibs/ for most of the files.  Use `pip3 install [filename]` . Uvloop is not supported on Windows.
 
@@ -115,7 +115,7 @@ Here are a couple that will work:
 
 `ACCOUNTS = [['x'], ['y']]`
 
-**Q. What do the dots represent in the status display?**
+**Q. What do the dots represent in the console status display?**
 
 Dots meaning:
 ```        
