@@ -105,7 +105,7 @@ pip3 install -U -r requirements.txt
 
 See http://www.lfd.uci.edu/~gohlke/pythonlibs/ for most of the files.  Use `pip3 install [filename]` . Uvloop is not supported on Windows.
 
-**Q. What map polygon tools can I use to create my boundaries?** 
+**Q. What mapping tools can I use to create my polygon boundaries?** 
 
 Here are a couple that will work:
 * http://geojson.io/  (note long/lat is reversed in the json) -- good for saving and later editing
