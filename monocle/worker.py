@@ -1224,6 +1224,11 @@ class Worker:
         tsm = raw.last_modified_timestamp_ms
         tss = round(tsm / 1000)
         tth = raw.time_till_hidden_ms
+        #Check form just for Unown
+        if raw.pokemon_data.pokemon_id == 201 and raw.pokemon_data.pokemon_display.form > 0:
+            unown_form = raw.pokemon_data.pokemon_display.form
+        else:
+            unown_form = None
         norm = {
             'type': 'pokemon',
             'encounter_id': raw.encounter_id,
@@ -1231,6 +1236,7 @@ class Worker:
             'lat': raw.latitude,
             'lon': raw.longitude,
             'spawn_id': int(raw.spawn_point_id, 16) if spawn_int else raw.spawn_point_id,
+            'form': unown_form,
             'seen': tss
         }
         if tth > 0 and tth <= 90000:

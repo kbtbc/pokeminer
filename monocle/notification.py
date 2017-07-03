@@ -791,7 +791,8 @@ class Notifier:
             data['message']['gender'] = pokemon['gender']
             data['message']['cp'] = pokemon['cp']
             data['message']['pokemon_level'] = pokemon['level']
-        except KeyError:
+            data['message']['form'] = pokemon['form']
+            except KeyError:
             pass
 
         session = SessionManager.get()
