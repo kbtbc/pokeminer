@@ -712,7 +712,7 @@ class Worker:
             err = str(e)
             self.log.error(err)
             print(err)
-            exit()
+            await sleep(10, loop=LOOP)
         except (ex.MalformedResponseException, ex.UnexpectedResponseException) as e:
             self.log.warning('{} Giving up.', e)
             self.error_code = 'MALFORMED RESPONSE'
@@ -837,8 +837,29 @@ class Worker:
                         db_proc.add(self.normalize_gym(fort))
                     if fort.HasField('raid_info'):
                         print('raid found')
+                        raid_info = fort.raid_info
+                        normalized_raid = self.normalize_raid(fort)
+                        if raid_info.HasField('raid_pokemon'):
+                            normalized_raid['pokemon_id'] = raid_info.raid_pokemon.pokemon_id
+                            normalized_raid['cp'] = raid_info.raid_pokemon.cp
+                            normalized_raid['move_1'] = raid_info.raid_pokemon.move_1
+                            normalized_raid['move_2'] = raid_info.raid_pokemon.move_2
                         if fort not in RAID_CACHE:
                             db_proc.add(self.normalize_raid(fort))
+
+                            
+                        team = 'None'
+                        
+                        if fort.owned_by_team == 1:
+                            team = 'Mystic'
+                        elif fort.owned_by_team == 2:
+                            team = 'Valor'
+                        elif fort.owned_by_team == 3:
+                            team = 'Instinct'
+
+                        if self.notifier.raid_eligible(normalized_raid):
+                            LOOP.create_task(self.notifier.raid_webhook(normalized_raid, fort.latitude, fort.longitude, team))
+                            self.log.info('Sent raid web hook info.')
 
             if more_points:
                 try:

@@ -15,6 +15,7 @@ from .names import MOVES, POKEMON
 from .shared import get_logger, SessionManager, LOOP, run_threaded
 from . import sanitized as conf
 
+import googlemaps
 
 WEBHOOK = False
 if conf.NOTIFY:
@@ -573,6 +574,7 @@ class Notifier:
 
     def __init__(self):
         self.cache = NotificationCache()
+        self.raid_cache = NotificationCache()
         self.notify_ranking = conf.NOTIFY_RANKING
         self.initial_score = conf.INITIAL_SCORE
         self.minimum_score = conf.MINIMUM_SCORE
@@ -582,6 +584,8 @@ class Notifier:
         self.never_notify = conf.NEVER_NOTIFY_IDS
         self.rarity_override = conf.RARITY_OVERRIDE
         self.sent = 0
+        self.gmaps_client = \
+            googlemaps.Client(key=conf.GOOGLE_MAPS_KEY, timeout=3, retry_timeout=4) if conf.GOOGLE_MAPS_KEY is not None else None
         if self.notify_ranking:
             self.initialize_ranking()
             LOOP.call_later(3600, self.set_notify_ids)
@@ -798,6 +802,126 @@ class Notifier:
         session = SessionManager.get()
         return await self.wh_send(session, data)
 
+    def raid_eligible(self, raidinfo):
+        cache_key = raidinfo['raid_seed']
+
+        if 'pokemon_id' in raidinfo:
+            cache_key += raidinfo['pokemon_id']
+
+        self.log.info('cache_key {}'.format(cache_key))
+        if (cache_key not in self.raid_cache):
+            return raidinfo['raid_level'] >= conf.RAID_LEVEL_MIN;
+
+        return False
+
+    async def raid_webhook(self, raidinfo, lat, lon, team):
+        """ Send a discord notification via webhook
+        """
+        self.log.info('Beginning webhook consruction.')
+        if not conf.RAID_WEBHOOK:
+            return None
+
+        if conf.TZ_OFFSET:
+            _tz = timezone(timedelta(hours=conf.TZ_OFFSET))
+        else:
+            _tz = None
+        start = datetime.fromtimestamp(raidinfo['raid_start'], _tz)
+        end = datetime.fromtimestamp(raidinfo['raid_end'], _tz)
+
+        map = self.get_gmaps_link(lat, lon)
+        
+        details = {
+            'street_num': 'unkn', 'street': 'unknown', 'address': 'unknown', 'postal': 'unknown',
+            'neighborhood': 'unknown', 'sublocality': 'unknown', 'city': 'unknown',
+            'county': 'unknown', 'state': 'unknown', 'country': 'country'
+        }
+        
+        result = self.gmaps_client.reverse_geocode((lat, lon))[0]
+        loc = {}
+        for item in result['address_components']:
+            for category in item['types']:
+                loc[category] = item['short_name']
+                
+        details['street_num'] = loc.get('street_number', 'unkn')
+        details['street'] = loc.get('route', 'unkn')
+        details['address'] = "{} {}".format(details['street_num'], details['street'])
+        details['postal'] = loc.get('postal_code', 'unkn')
+        details['neighborhood'] = loc.get('neighborhood', "unknown")
+        details['sublocality'] = loc.get('sublocality', "unknown")
+        details['city'] = loc.get('locality', loc.get('postal_town', 'unknown'))
+        details['county'] = loc.get('administrative_area_level_2', 'unknown')
+        details['state'] = loc.get('administrative_area_level_1', 'unknown')
+        details['country'] = loc.get('country', 'unknown')
+        
+        if 'pokemon_id' in raidinfo:
+            name = POKEMON[raidinfo['pokemon_id']]
+            move_1 = MOVES[raidinfo['move_1']]
+            move_2 = MOVES[raidinfo['move_2']]
+            payload = {
+                'username': '{p} Boss'.format(p=name),
+                'embeds': [{
+                    'title': '{p} Raid!'.format(p=name),
+                    'url': map,
+                    'description': '**Level:** {l} - **CP:** {c}\n**Address:** {a}, {cty}\n**County:** {cnty}\n\n**Moveset:** {m1}/{m2}\n\n**Start:** {s}\n**End:** {e}\n\n**Current Team:** {t}\n\n**Map:** {m}'.format(
+                        l=raidinfo['raid_level'], c=raidinfo['cp'], m1=move_1, m2=move_2,
+                        s=start.strftime('%I:%M %p').lstrip('0'), e=end.strftime('%I:%M %p').lstrip('0'), t=team, m=map,
+                        a=details['address'], cty=details['city'], cnty=details['county']
+                    ),
+                    'thumbnail': {'url': 'https://raw.githubusercontent.com/kvangent/PokeAlarm/master/icons/{i}.png'.format(i=raidinfo['pokemon_id']) }
+                }]
+            }
+        else:
+            payload = {
+                'username': 'Level {l} Raid'.format(l=raidinfo['raid_level']),
+                'embeds': [{
+                    'title': 'Level {l} Raid Starting Soon!'.format(l=raidinfo['raid_level']),
+                    'url': map,
+                    'description': '**Level:** {l}\n**Address:** {a}, {cty}\n**County:** {cnty}\n\n**Start:** {s}\n**End:** {e}\n\n**Current Team:** {t}\n\n**Map:** {m}'.format(
+                        l=raidinfo['raid_level'], s=start.strftime('%I:%M %p').lstrip('0'), e=end.strftime('%I:%M %p').lstrip('0'), t=team, m=map,
+                        a=details['address'], cty=details['city'], cnty=details['county']
+                    ),
+                    'thumbnail': {'url': 'https://raw.githubusercontent.com/pgandev/Monocle/develop_pgan/monocle/static/img/egg-{l}.png'.format(l=raidinfo['raid_level']) }
+                }]
+            }        
+        
+        cache_key = raidinfo['raid_seed']
+        
+        if 'pokemon_id' in raidinfo:
+            cache_key += raidinfo['pokemon_id']
+
+        self.raid_cache.add(cache_key, 3600)
+        payload['embeds'][0]['image'] = {'url': self.get_static_map_url(lat, lon, conf.GOOGLE_MAPS_KEY)}
+
+        session = SessionManager.get()
+        return await self.hook_post(conf.RAID_WEBHOOK, session, payload)
+
+    def get_gmaps_link(self, lat, lng):
+        latlng = '{},{}'.format(repr(lat), repr(lng))
+        return 'http://maps.google.com/maps?q={}'.format(latlng)
+
+    # Returns a static map url with <lat> and <lng> parameters for dynamic test
+    def get_static_map_url(self, lat, lng, api_key=None):  # TODO: optimize formatting
+        #if not parse_boolean(settings.get('enabled', 'True')):
+            #return None
+        width = '250'
+        height = '125'
+        maptype = 'roadmap'
+        zoom = '15'
+
+        center = '{},{}'.format(lat, lng)
+        query_center = 'center={}'.format(center)
+        query_markers = 'markers=color:red%7C{}'.format(center)
+        query_size = 'size={}x{}'.format(width, height)
+        query_zoom = 'zoom={}'.format(zoom)
+        query_maptype = 'maptype={}'.format(maptype)
+
+        map_ = ('https://maps.googleapis.com/maps/api/staticmap?' +
+                query_center + '&' + query_markers + '&' +
+                query_maptype + '&' + query_size + '&' + query_zoom)
+
+        if api_key is not None:
+            map_ += ('&key=%s' % api_key)
+        return map_
     if WEBHOOK > 1:
         async def wh_send(self, session, payload):
             results = await gather(*tuple(self.hook_post(w, session, payload) for w in HOOK_POINTS), loop=LOOP)
