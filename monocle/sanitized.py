@@ -202,7 +202,7 @@ _defaults = {
     'RAID_LEVEL_MIN': 3,
     'RAID_WEBHOOK': None,                         
     'PROXIES': None,
-	'RAIDS_FILTER': (1, 2, 3, 4, 5),
+    'RAIDS_FILTER': (1, 2, 3, 4, 5),
     'RARE_IDS': (),
     'RARITY_OVERRIDE': {},
     'REFRESH_RATE': 0.6,
